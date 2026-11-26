@@ -1,7 +1,8 @@
 name: Build APK
 
-# 雲端打包：不需要在自己電腦安裝 Android SDK/NDK/JDK，
-# 推上 GitHub 後由 Actions 產出 APK，再到 Artifacts 下載。
+# 使用 Kivy 官方 Docker image（kivy/buildozer）直接在容器內跑 buildozer。
+# 不使用第三方 action：ArtemSBulgakov/buildozer-action@v1 的 Docker image
+# 已經壞掉（docker pull 回 500），會在準備階段就直接失敗。
 
 on:
   push:
@@ -11,21 +12,27 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: kivy/buildozer:latest
+      options: --user root
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build with Buildozer
-        id: buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        with:
-          command: buildozer android debug
-          buildozer_version: stable
+      - name: Show toolchain versions
+        run: |
+          python3 --version
+          buildozer --version || true
+
+      - name: Build debug APK
+        # 不要接 pipe（例如 | tail），否則 buildozer 失敗會被 pipe 的 exit code 蓋掉
+        run: buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: workencourager-debug-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: bin/*.apk
           if-no-files-found: error
