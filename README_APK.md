@@ -150,3 +150,23 @@ docker run --rm -v "${PWD}:/home/user/hostcwd" -v "${PWD}/.buildozer:/home/user/
 - 打包過程用的是 python-for-android 內建的 Python（3.11），不是你的 3.14；
   `core.py` 沒有用到 3.12+ 語法，兩邊都能跑。
 - 想改版本號：`buildozer.spec` 的 `version`，同時 `android.api` 建議維持 34。
+
+---
+
+## 實際建置紀錄（2026-11-26，已成功產出 APK）
+
+第一次能成功產出 APK 的設定，就寫在 .github/workflows/build-apk.yml 與 uildozer.spec 裡。
+過程中踩到六個坑，全部與 App 程式碼無關：
+
+| # | 症狀 | 原因 | 解法 |
+|---|---|---|---|
+| 1 | 88 秒失敗，連 checkout 都沒跑 | ArtemSBulgakov/buildozer-action@v1 的 Docker image 已失效（pull 回 500） | 不用第三方 action |
+| 2 | EOFError: EOF when reading a line | buildozer 以 root 執行時要求互動確認，CI 沒有 stdin | [buildozer] warn_on_root = 0 |
+| 3 | ImportError: cannot import name 'capture_logging' | kivy/buildozer:latest 內建 Python 3.14 與自我不一致的 pip | 改用原生 runner（Python 3.10） |
+| 4 | charset_normalizer ... is not a supported wheel | charset-normalizer 3.5.x 發佈 Android 專用 wheel，p4a 用 host pip 安裝且不帶 --platform | ndroid.minapi = 21，讓平台標籤對不上，pip 退回通用 wheel |
+| 5 | 同上，釘版本無效 | p4a 在 dry-run 時會剝離 ==版本 | 改用 minapi 的方式，不要釘版本 |
+| 6 | gradlew failed! | runner 預設 JDK 太新，AGP 8 的 Gradle wrapper 不支援 | 明確設定 JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64 |
+
+最終產物：workencourager-1.0.0-arm64-v8a-debug.apk（artifact 約 26 MB，保留 90 天）。
+
+失敗時 workflow 會自動把 buildozer 日誌推到 ci-log 分支，不需要 GitHub 權限也能讀取排查。
