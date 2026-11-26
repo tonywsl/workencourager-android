@@ -23,7 +23,8 @@ fullscreen = 0
 android.api = 34
 android.minapi = 24
 android.ndk = 25b
-android.archs = arm64-v8a, armeabi-v7a
+# 只編 arm64-v8a：涵蓋 2017 年後幾乎所有 Android 手機，建置時間與檔案大小都減半
+android.archs = arm64-v8a
 android.accept_sdk_license = True
 
 [buildozer]
