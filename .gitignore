@@ -1,0 +1,17 @@
+# Buildozer 產物
+bin/
+.buildozer/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 本機測試殘留
+_kivy/
+_testdata/
+
+# 編輯器
+.vscode/
+.idea/
+*.swp
