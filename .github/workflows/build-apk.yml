@@ -51,7 +51,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          # 固定 key：SDK/NDK 與 spec 內容無關，改 spec 不該重新下載 2 GB
+          key: buildozer-${{ runner.os }}-sdk-v1
+          restore-keys: |
+            buildozer-${{ runner.os }}-
 
       - name: Build debug APK
         # set -o pipefail：保留 buildozer 的退出碼，同時留下完整日誌
