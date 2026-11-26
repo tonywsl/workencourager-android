@@ -28,4 +28,5 @@ android.accept_sdk_license = True
 
 [buildozer]
 log_level = 2
-warn_on_root = 1
+# 在容器／CI 裡是以 root 執行，設 0 才不會跳出互動確認（CI 沒有 stdin，會 EOFError）
+warn_on_root = 0
