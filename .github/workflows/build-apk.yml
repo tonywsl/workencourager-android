@@ -1,13 +1,17 @@
 name: Build APK
 
 # 使用 Kivy 官方 Docker image（kivy/buildozer）直接在容器內跑 buildozer。
-# 不使用第三方 action：ArtemSBulgakov/buildozer-action@v1 的 Docker image
-# 已經壞掉（docker pull 回 500），會在準備階段就直接失敗。
+# 不使用第三方 action：ArtemSBulgakov/buildozer-action@v1 的 Docker image 已失效。
+#
+# 失敗時會把 buildozer 的日誌推到 ci-log 分支，方便在沒有 GitHub 權限的環境排查。
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-android:
@@ -25,10 +29,14 @@ jobs:
         run: |
           python3 --version
           buildozer --version || true
+          grep -E '^(NAME|VERSION)=' /etc/os-release || true
 
       - name: Build debug APK
-        # 不要接 pipe（例如 | tail），否則 buildozer 失敗會被 pipe 的 exit code 蓋掉
-        run: buildozer android debug
+        # 不要接 | tail，否則 buildozer 的失敗退出碼會被吃掉；
+        # tee 搭配 pipefail 才能保留原退出碼又留下完整日誌。
+        run: |
+          set -o pipefail
+          buildozer android debug 2>&1 | tee buildozer.log
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -36,3 +44,15 @@ jobs:
           name: workencourager-debug-apk
           path: bin/*.apk
           if-no-files-found: error
+
+      - name: Publish failure log to ci-log branch
+        if: failure()
+        run: |
+          git config --global --add safe.directory "$PWD"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p .ci
+          tail -n 400 buildozer.log > .ci/build-error.log || true
+          git add -f .ci/build-error.log
+          git commit -m "ci: build error log [skip ci]" || true
+          git push --force origin HEAD:refs/heads/ci-log
