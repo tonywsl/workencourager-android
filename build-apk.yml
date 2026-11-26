@@ -1,0 +1,79 @@
+name: Build APK
+
+# 直接在本機 runner 上安裝 buildozer（不使用 Docker image）。
+# 原因：kivy/buildozer:latest 內建 Python 3.14 與自我不一致的 pip，
+# p4a 升級 pip 時會 ImportError: cannot import name 'capture_logging'，
+# 且該 image 只有 latest 一個 tag，無法回退版本。
+#
+# 失敗時會把 buildozer 日誌推到 ci-log 分支，方便排查。
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
+            zlib1g-dev libncurses-dev libncursesw5-dev cmake libffi-dev libssl-dev
+
+      - name: Install buildozer
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install buildozer
+
+      - name: Verify toolchain
+        run: |
+          python --version
+          java -version 2>&1 | head -1
+          buildozer --version
+
+      - name: Cache Android SDK / NDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+
+      - name: Build debug APK
+        # set -o pipefail：保留 buildozer 的退出碼，同時留下完整日誌
+        run: |
+          set -o pipefail
+          buildozer android debug 2>&1 | tee buildozer.log
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: workencourager-debug-apk
+          path: bin/*.apk
+          if-no-files-found: error
+
+      - name: Publish failure log to ci-log branch
+        if: failure()
+        run: |
+          git config --global --add safe.directory "$PWD"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p .ci
+          tail -n 400 buildozer.log > .ci/build-error.log || true
+          git add -f .ci/build-error.log
+          git commit -m "ci: build error log [skip ci]" || true
+          git push --force origin HEAD:refs/heads/ci-log

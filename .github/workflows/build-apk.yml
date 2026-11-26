@@ -47,6 +47,12 @@ jobs:
           java -version 2>&1 | head -1
           buildozer --version
 
+      - name: Cache Android SDK / NDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+
       - name: Build debug APK
         # set -o pipefail：保留 buildozer 的退出碼，同時留下完整日誌
         run: |

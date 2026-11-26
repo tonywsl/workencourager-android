@@ -14,7 +14,12 @@ source.exclude_patterns = *.pyc
 version = 1.0.0
 
 # Kivy 2.3.1 是 python-for-android 目前支援的穩定版本
-requirements = python3,kivy==2.3.1
+#
+# charset-normalizer 釘在 3.4.4：3.5.x 起會發佈 Android 專用二進位 wheel
+# （cp314-cp314-android_24_arm64_v8a），而 p4a 是用 host pip 安裝、不帶 --platform，
+# 會出現 "is not a supported wheel on this platform" 而建置失敗。
+# 3.4.4 只有通用 py3-none-any wheel，host pip 可以正常安裝。
+requirements = python3,kivy==2.3.1,charset-normalizer==3.4.4
 
 # 直式視窗
 orientation = portrait
