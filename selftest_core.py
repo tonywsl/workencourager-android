@@ -69,13 +69,21 @@ def main() -> int:
         ledger.record("2026-11-26", 1800)
         check("帳本只增不減", ledger.seconds_in_month(2026, 11), 3600)
 
-        # 本月累計以「月」為單位：沒記錄的平日按滿勤補
-        empty = core.Ledger(core.Store(tmp / "empty"))
-        total, estimated = core.month_seconds_estimate(
-            empty, schedule, datetime(2026, 11, 26, 10, 0), 21
+        # 本月累計：以整月進度計算（已過平日算滿、今天按時間比例）
+        moment = datetime(2026, 11, 27, 14, 16)  # 週五，已過 19 個平日
+        progress = core.month_progress(moment, schedule, 21)
+        check("整月進度天數", round(progress, 4), round(19 + 18960 / 32400, 4))
+        check(
+            "本月累計",
+            round(core.month_earned(3000.0, moment, schedule, 21), 2),
+            round(3000.0 * progress / 21, 2),
         )
-        check("整月估算天數", estimated, 18)
-        check("整月估算秒數", total, 18 * 32400)
+        check(
+            "月底等於月薪",
+            round(core.month_earned(3000.0, datetime(2026, 11, 30, 19, 0), schedule, 21), 2),
+            3000.0,
+        )
+        check("預設月薪", core.Settings().monthly_salary, 3000.0)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

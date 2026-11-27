@@ -280,7 +280,7 @@ def _as_time(value: object, default: time) -> time:
 class Settings:
     """所有可調整的設定；載入時壞欄位退回預設，不讓程式開不起來。"""
 
-    monthly_salary: float = 3650.0
+    monthly_salary: float = 3000.0
     is_auto_days: bool = True
     manual_days: int = 22
     schedule: WorkSchedule = field(default_factory=WorkSchedule)
@@ -432,34 +432,44 @@ class Ledger:
         return len(self._data)
 
 
+def month_progress(now: datetime, schedule: "WorkSchedule", workdays: int) -> float:
+    """本月已完成的工作天數（含今日按時間比例）。
+
+    已過的平日一律算 1 天（月薪制不看 App 有沒有開著），
+    今天則依實際時間比例計算，週末為 0。
+    """
+    if workdays <= 0 or schedule.total_seconds <= 0:
+        return 0.0
+    passed = passed_workdays(now.year, now.month, now.day)
+    fraction = 0.0
+    if now.weekday() < 5:
+        fraction = min(1.0, schedule.worked_seconds(now) / schedule.total_seconds)
+    return min(float(workdays), passed + fraction)
+
+
+def month_earned(
+    monthly_salary: float, now: datetime, schedule: "WorkSchedule", workdays: int
+) -> float:
+    """本月累計，以「月」為單位。
+
+    = 月薪 × 已完成天數 ÷ 當月工作天數
+
+    這樣月底會剛好等於月薪，且不會因為某天 App 提早關閉而被永久少算。
+    """
+    if workdays <= 0:
+        return 0.0
+    return monthly_salary * month_progress(now, schedule, workdays) / workdays
+
+
 def month_seconds_estimate(
     ledger: "Ledger", schedule: "WorkSchedule", now: datetime, workdays: int
 ) -> tuple:
-    """以「月」為單位估算本月累計秒數。
+    """以「月」為單位估算本月累計秒數（保留給舊版呼叫端）。
 
-    規則：
-    * 已有記錄的日子，用實際秒數；
-    * 今天以前、沒有記錄的平日，按「滿勤」補上；
-    * 補上的天數不超過本月設定的工作天數。
-
-    這樣一開程式看到的就是整月累計（約等於月薪的進度），
-    而不是只從今天開始算。回傳 ``(總秒數, 被估算的天數)``。
+    已在 v2.1 改由 :func:`month_earned` 計算，此函式僅為相容而保留。
     """
-    year, month = now.year, now.month
-    recorded = ledger.seconds_in_month(year, month)
-    recorded_days = ledger.days_in_month(year, month)
-
-    missing = 0
-    for day in range(1, now.day):
-        if calendar.weekday(year, month, day) >= 5:
-            continue
-        if not ledger.has(f"{year:04d}-{month:02d}-{day:02d}"):
-            missing += 1
-
-    budget = max(0, workdays - recorded_days)
-    estimated_days = min(missing, budget)
-    total = recorded + estimated_days * schedule.total_seconds
-    return min(total, workdays * schedule.total_seconds), estimated_days
+    progress = month_progress(now, schedule, workdays)
+    return int(progress * schedule.total_seconds), 0
 
 
 def seed_past_workdays(ledger: Ledger, settings: Settings, now: datetime, workdays: int) -> int:

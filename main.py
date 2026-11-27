@@ -320,25 +320,15 @@ class MainScreen(Screen):
         root.add_widget(month_row)
 
         self.note_label = Label(
-            text="(工時帳本)", font_name=FONT, font_size=sp(10), color=DIM,
+            text="(整月進度)", font_name=FONT, font_size=sp(10), color=DIM,
             size_hint_y=None, height=dp(18),
         )
         root.add_widget(self.note_label)
-
-        root.add_widget(
-            action_button(
-                "＋ 補登本月已過工作日", self._seed, primary=False,
-                height=dp(36), font_size=sp(12),
-            )
-        )
         self.add_widget(root)
 
     # ---------- 事件 ----------
     def _open_settings(self, *_args) -> None:
         App.get_running_app().open_settings()
-
-    def _seed(self, *_args) -> None:
-        App.get_running_app().ask_seed()
 
     # ---------- 更新畫面 ----------
     def set_state(
@@ -597,9 +587,10 @@ class WorkEncouragerApp(App):
         self._tick(0)
         shot = os.environ.get("WE_SHOT")
         if shot:
+            delay = float(os.environ.get("WE_SHOT_DELAY", "1.2"))
             if os.environ.get("WE_SHOT_SCREEN") == "settings":
                 Clock.schedule_once(lambda _dt: self.open_settings(), 0.4)
-            Clock.schedule_once(lambda _dt: self._screenshot(shot), 1.2)
+            Clock.schedule_once(lambda _dt: self._screenshot(shot), delay)
 
     def on_stop(self) -> None:
         self._flush()
@@ -634,30 +625,6 @@ class WorkEncouragerApp(App):
         except OSError as exc:
             show_popup("設定未保存", f"設定已套用，但寫入設定檔失敗：\n{exc}")
         self._refresh(datetime.now())
-
-    # ---------- 補登 ----------
-    def ask_seed(self) -> None:
-        now = datetime.now()
-        pending = [
-            day for day in range(1, now.day) if datetime(now.year, now.month, day).weekday() < 5
-        ]
-        if not pending:
-            show_popup("補登", "本月目前沒有需要補登的已過工作日。")
-            return
-        count = min(len(pending), self._workdays(now))
-        hours = self.settings.schedule.total_seconds / 3600
-
-        def _do_seed() -> None:
-            core.seed_past_workdays(self.ledger, self.settings, now, self._workdays(now))
-            self._flush()
-            self._refresh(datetime.now())
-
-        show_popup(
-            "補登本月工時",
-            f"將把 {now.month} 月的 {count} 個已過工作日補登為滿勤（每日 {hours:.1f} 小時）。\n"
-            "之後仍以實際記錄為準。",
-            confirm=_do_seed,
-        )
 
     # ---------- 計算 ----------
     def _workdays(self, now: datetime) -> int:
@@ -746,16 +713,10 @@ class WorkEncouragerApp(App):
             today_text = "$0.0000"
             target_text, target_color = "休息日不計工資", DIM
 
-        month_seconds, estimated_days = core.month_seconds_estimate(
-            self.ledger, schedule, now, self._workdays(now)
-        )
-        month_text = f"${month_seconds * rates.per_second:.2f}"
-        if estimated_days:
-            note_text = f"(工時帳本 · 含 {estimated_days} 天滿勤估算)"
-        elif self.ledger.first_record_in_month(now.year, now.month) is None:
-            note_text = "(工時帳本 · 尚無記錄)"
-        else:
-            note_text = "(工時帳本 · 本月完整記錄)"
+        workdays = self._workdays(now)
+        progress_days = core.month_progress(now, schedule, workdays)
+        month_text = f"${core.month_earned(self.settings.monthly_salary, now, schedule, workdays):.2f}"
+        note_text = f"(整月進度 {progress_days:.1f} / {workdays} 天)"
 
         self.main_screen.set_state(
             date_text=now.strftime(f"%Y-%m-%d {weekdays[now.weekday()]}"),
